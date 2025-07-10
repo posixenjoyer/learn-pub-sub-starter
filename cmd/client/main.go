@@ -40,6 +40,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	queueName := string(routing.PauseKey) + "." + user
+
 	signal.Notify(sigChan, os.Interrupt)
 	<-sigChan
 	fmt.Println("Received interrupt, exiting...")

@@ -3,7 +3,7 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	_ "errors"
 	"fmt"
 
 	amqp "github.com/rabbitmq/amqp091-go"
