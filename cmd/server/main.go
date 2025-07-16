@@ -13,15 +13,15 @@ import (
 func main() {
 	fmt.Println("Starting Peril server...")
 	connect := "amqp://guest:guest@localhost:5672/"
-	ampqConnection, err := amqp.Dial(connect)
+	amqpConnection, err := amqp.Dial(connect)
 
 	if err != nil {
 		fmt.Printf("Error connecting to AMQP server: %v\n", err)
 	}
-	defer ampqConnection.Close()
+	defer amqpConnection.Close()
 
 	sigChan := make(chan os.Signal, 1)
-	rabbitChan, err := ampqConnection.Channel()
+	rabbitChan, err := amqpConnection.Channel()
 	if err != nil {
 		fmt.Printf("Error setting up message channel: %v\n", err)
 	}
@@ -34,6 +34,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	_, _, err = pubsub.DeclareBind(
+		amqpConnection,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug,
+		routing.GameLogKey,
+		pubsub.Durable)
 	signal.Notify(sigChan, os.Interrupt)
 	<-sigChan
 	fmt.Println("Received interrupt, exiting...")
