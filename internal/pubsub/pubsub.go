@@ -9,12 +9,78 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type queueType int
+type QueueType int
 
 const (
-	Durable queueType = iota
+	Durable QueueType = iota
 	Transient
 )
+
+const consumerStopped = "Stopped consumer, message channel closed."
+const gracefulChClose = "Channel Closed properly"
+
+func chanCloseError(err error) string {
+	errMsg := fmt.Sprintf("Channel closed as the result of error: %v", err)
+	return errMsg
+}
+
+func SubscribeJSON[T any](
+	con *amqp.Connection,
+	exchange, queueName, key string,
+	val QueueType,
+	handler func(T)) error {
+
+	fmt.Println("Quename = ", queueName)
+	aChan, _, err := DeclareBind(con, exchange, queueName, key, val)
+	if err != nil {
+		return err
+	}
+
+	dMsgs, err := aChan.Consume(queueName, "", false, false, false, false, nil)
+
+	if err != nil {
+		return err
+	}
+
+	statusCh := make(chan string)
+	closeCh := make(chan *amqp.Error)
+	aChan.NotifyClose(closeCh)
+
+	go func() {
+		for {
+			defer close(statusCh)
+			select {
+			case msg, ok := <-dMsgs:
+				rawMsg := new(T)
+				if !ok {
+					statusCh <- consumerStopped
+					return
+				}
+
+				err := json.Unmarshal(msg.Body, rawMsg)
+				if err != nil {
+					statusCh <- fmt.Sprintf(
+						"Error unmarshalling JSON: (%s)",
+						err)
+					return
+				}
+
+				handler(*rawMsg)
+				msg.Ack(false)
+
+			case err := <-closeCh:
+				if err != nil {
+					statusCh <- chanCloseError(err)
+				} else {
+					statusCh <- gracefulChClose
+				}
+				return
+			}
+		}
+	}()
+
+	return nil
+}
 
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	valJSON, err := json.Marshal(val)
@@ -35,7 +101,7 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	return nil
 }
 
-func DeclareBind(con *amqp.Connection, exchange, queueName, key string, queueType queueType) (*amqp.Channel, *amqp.Queue, error) {
+func DeclareBind(con *amqp.Connection, exchange, queueName, key string, queueType QueueType) (*amqp.Channel, *amqp.Queue, error) {
 	var durable bool
 
 	switch queueType {
@@ -48,7 +114,6 @@ func DeclareBind(con *amqp.Connection, exchange, queueName, key string, queueTyp
 	}
 
 	ch, err := con.Channel()
-	defer ch.Close()
 
 	if err != nil {
 		return nil, nil, err

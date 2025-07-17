@@ -7,8 +7,15 @@ import (
 	routing "github.com/posixenjoyer/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"os"
-	"os/signal"
 )
+
+func handlerPause(state *gamelogic.GameState) func(routing.PlayingState) {
+	return func(ps routing.PlayingState) {
+		fmt.Printf("Handler called with: %+v\n", ps)
+		defer fmt.Print("> ")
+		state.HandlePause(ps)
+	}
+}
 
 func main() {
 	fmt.Println("Starting Peril client...")
@@ -21,7 +28,6 @@ func main() {
 	}
 	defer ampqConnection.Close()
 
-	sigChan := make(chan os.Signal, 1)
 	rabbitChan, err := ampqConnection.Channel()
 	if err != nil {
 		fmt.Printf("Error setting up message channel: %v\n", err)
@@ -41,9 +47,39 @@ func main() {
 	}
 
 	queueName := string(routing.PauseKey) + "." + user
+	gameState := gamelogic.NewGameState(user)
+	err = pubsub.SubscribeJSON(ampqConnection,
+		routing.ExchangePerilDirect,
+		queueName,
+		routing.PauseKey,
+		pubsub.Transient,
+		handlerPause(gameState))
 
-	signal.Notify(sigChan, os.Interrupt)
-	<-sigChan
-	fmt.Println("Received interrupt, exiting...")
+	if err != nil {
+		fmt.Println("Error Subscribing: ", err)
+	}
+
+	for {
+		input := gamelogic.GetInput()
+		if len(input) == 0 {
+			fmt.Println("Oh, a funny guy....")
+			continue
+		}
+
+		if input[0] == "quit" {
+			gamelogic.PrintQuit()
+			break
+		}
+
+		if gameState.Paused {
+			fmt.Println("Sorry, the game is paused!")
+			continue
+		}
+
+		err := processCmd(input, gameState)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
 	os.Exit(0)
 }
