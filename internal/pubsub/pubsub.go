@@ -10,6 +10,13 @@ import (
 )
 
 type QueueType int
+type AckType int
+
+const (
+	Ack = iota
+	NackRequeue
+	NackDiscard
+)
 
 const (
 	Durable QueueType = iota
@@ -28,7 +35,7 @@ func SubscribeJSON[T any](
 	con *amqp.Connection,
 	exchange, queueName, key string,
 	val QueueType,
-	handler func(T)) error {
+	handler func(T) AckType) error {
 
 	fmt.Println("Quename = ", queueName)
 	aChan, _, err := DeclareBind(con, exchange, queueName, key, val)
@@ -66,9 +73,16 @@ func SubscribeJSON[T any](
 					return
 				}
 
-				handler(*rawMsg)
-				msg.Ack(false)
+				ackRes := handler(*rawMsg)
 
+				switch ackRes {
+				case Ack:
+					msg.Ack(false)
+				case NackDiscard:
+					msg.Nack(false, false)
+				case NackRequeue:
+					msg.Nack(false, true)
+				}
 			case err := <-closeCh:
 				if err != nil {
 					statusCh <- chanCloseError(err)
@@ -121,7 +135,11 @@ func DeclareBind(con *amqp.Connection, exchange, queueName, key string, queueTyp
 		return nil, nil, err
 	}
 
-	queue, err := ch.QueueDeclare(queueName, durable, !durable, !durable, !durable, nil)
+	aTable := make(amqp.Table)
+
+	aTable["x-dead-letter-exchange"] = "peril_dlx"
+
+	queue, err := ch.QueueDeclare(queueName, durable, !durable, !durable, !durable, aTable)
 	if err != nil {
 		return nil, nil, err
 	}

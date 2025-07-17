@@ -9,17 +9,33 @@ import (
 	"os"
 )
 
-func handleMove(state *gamelogic.GameState) func(gamelogic.ArmyMove) {
-	return func(move gamelogic.ArmyMove) {
+type AckType = pubsub.AckType
+
+const (
+	Ack = iota
+	NackRequeue
+	NackDiscard
+)
+
+func handleMove(state *gamelogic.GameState) func(gamelogic.ArmyMove) AckType {
+	return func(move gamelogic.ArmyMove) AckType {
 		defer fmt.Print("> ")
-		state.HandleMove(move)
+		moveResult := state.HandleMove(move)
+
+		switch moveResult {
+		case (gamelogic.MoveOutComeSafe | gamelogic.MoveOutcomeMakeWar):
+			return pubsub.Ack
+		default:
+			return pubsub.NackDiscard
+		}
 	}
 }
 
-func handlePause(state *gamelogic.GameState) func(routing.PlayingState) {
-	return func(ps routing.PlayingState) {
+func handlePause(state *gamelogic.GameState) func(routing.PlayingState) AckType {
+	return func(ps routing.PlayingState) AckType {
 		defer fmt.Print("> ")
 		state.HandlePause(ps)
+		return pubsub.Ack
 	}
 }
 
@@ -49,6 +65,7 @@ func main() {
 	err = pubsub.PublishJSON(rabbitChan, string(routing.ExchangePerilDirect), string(routing.PauseKey), message)
 	if err != nil {
 		fmt.Printf("Error publishing msg: %v\n", err)
+		ampqConnection.Close()
 		os.Exit(1)
 	}
 
@@ -65,7 +82,7 @@ func main() {
 		fmt.Println("Error Subscribing: ", err)
 	}
 
-	queueName := routing.ArmyMovesPrefix + "." + user
+	queueName = routing.ArmyMovesPrefix + "." + user
 	err = pubsub.SubscribeJSON[gamelogic.ArmyMove](ampqConnection,
 		routing.ExchangePerilTopic,
 		queueName,
@@ -76,11 +93,7 @@ func main() {
 	if err != nil {
 		fmt.Println("Error subscribing: ", err)
 	}
-	fmt.Println("queueName: ", queueName)
-	fmt.Println("routingKey: ", routing.ArmyMovesWC)
 	for {
-		fmt.Println("How the fuck did I get here?")
-
 		input := gamelogic.GetInput()
 		if len(input) == 0 {
 			fmt.Println("Oh, a funny guy....")
@@ -102,5 +115,6 @@ func main() {
 			fmt.Println(err)
 		}
 	}
+	ampqConnection.Close()
 	os.Exit(0)
 }

@@ -19,7 +19,6 @@ func processSpawn(ch *amqp.Channel, argv []string, state gamelogic.GameState) er
 }
 
 func processMove(ch *amqp.Channel, argv []string, state gamelogic.GameState) error {
-
 	move, err := state.CommandMove(argv)
 	if err != nil {
 		return err
