@@ -1,8 +1,8 @@
 package gamelogic
 
 type Player struct {
-	Username string
-	Units    map[int]Unit
+	Username string       `json:"Username"`
+	Units    map[int]Unit `json:"Units"`
 }
 
 type UnitRank string
@@ -14,15 +14,15 @@ const (
 )
 
 type Unit struct {
-	ID       int
-	Rank     UnitRank
-	Location Location
+	ID       int      `json:"ID"`
+	Rank     UnitRank `json:"Rank"`
+	Location Location `json:"Location"`
 }
 
 type ArmyMove struct {
-	Player     Player
-	Units      []Unit
-	ToLocation Location
+	Player     Player   `json:"player"`
+	Units      []Unit   `json:"units"`
+	ToLocation Location `json:"to_location"`
 }
 
 type RecognitionOfWar struct {

@@ -9,9 +9,15 @@ import (
 	"os"
 )
 
-func handlerPause(state *gamelogic.GameState) func(routing.PlayingState) {
+func handleMove(state *gamelogic.GameState) func(gamelogic.ArmyMove) {
+	return func(move gamelogic.ArmyMove) {
+		defer fmt.Print("> ")
+		state.HandleMove(move)
+	}
+}
+
+func handlePause(state *gamelogic.GameState) func(routing.PlayingState) {
 	return func(ps routing.PlayingState) {
-		fmt.Printf("Handler called with: %+v\n", ps)
 		defer fmt.Print("> ")
 		state.HandlePause(ps)
 	}
@@ -53,13 +59,28 @@ func main() {
 		queueName,
 		routing.PauseKey,
 		pubsub.Transient,
-		handlerPause(gameState))
+		handlePause(gameState))
 
 	if err != nil {
 		fmt.Println("Error Subscribing: ", err)
 	}
 
+	queueName := routing.ArmyMovesPrefix + "." + user
+	err = pubsub.SubscribeJSON[gamelogic.ArmyMove](ampqConnection,
+		routing.ExchangePerilTopic,
+		queueName,
+		routing.ArmyMovesWC,
+		pubsub.Transient,
+		handleMove(gameState))
+
+	if err != nil {
+		fmt.Println("Error subscribing: ", err)
+	}
+	fmt.Println("queueName: ", queueName)
+	fmt.Println("routingKey: ", routing.ArmyMovesWC)
 	for {
+		fmt.Println("How the fuck did I get here?")
+
 		input := gamelogic.GetInput()
 		if len(input) == 0 {
 			fmt.Println("Oh, a funny guy....")
@@ -76,7 +97,7 @@ func main() {
 			continue
 		}
 
-		err := processCmd(input, gameState)
+		err := processCmd(rabbitChan, input, gameState)
 		if err != nil {
 			fmt.Println(err)
 		}

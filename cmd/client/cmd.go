@@ -5,9 +5,12 @@ import (
 	"fmt"
 
 	"github.com/posixenjoyer/learn-pub-sub-starter/internal/gamelogic"
+	"github.com/posixenjoyer/learn-pub-sub-starter/internal/pubsub"
+	"github.com/posixenjoyer/learn-pub-sub-starter/internal/routing"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func processSpawn(argv []string, state gamelogic.GameState) error {
+func processSpawn(ch *amqp.Channel, argv []string, state gamelogic.GameState) error {
 	err := state.CommandSpawn(argv)
 	if err != nil {
 		return err
@@ -15,33 +18,42 @@ func processSpawn(argv []string, state gamelogic.GameState) error {
 	return nil
 }
 
-func processMove(argv []string, state gamelogic.GameState) error {
+func processMove(ch *amqp.Channel, argv []string, state gamelogic.GameState) error {
+
 	move, err := state.CommandMove(argv)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s moved units to %s\n", move.Player.Username, move.ToLocation)
+	fmt.Printf("%s moved to %s\n", move.Player.Username, move.ToLocation)
+	key := routing.ArmyMovesPrefix + "." + move.Player.Username
+	err = pubsub.PublishJSON(ch, routing.ExchangePerilTopic, key, move)
+	if err != nil {
+		fmt.Println("Move failed: Error: ", err)
+	} else {
+		fmt.Println("Move published successfully")
+	}
+
 	return nil
 }
 func getStatus(argv []string) error {
 	return nil
 }
 
-func processCmd(argv []string, state *gamelogic.GameState) error {
+func processCmd(ch *amqp.Channel, args []string, state *gamelogic.GameState) error {
 	var err error
 	// check length just in case for sanity
 
-	if len(argv) == 0 {
+	if len(args) == 0 {
 		return errors.New("no command specified")
 	}
 
-	switch argv[0] {
+	switch args[0] {
 	case "spawn":
-		err = processSpawn(argv, *state)
+		err = processSpawn(ch, args, *state)
 	case "move":
-		err = processMove(argv, *state)
+		err = processMove(ch, args, *state)
 	case "status":
-		err = getStatus(argv)
+		err = getStatus(args)
 	case "spam":
 		fmt.Println("Spamming is not allowed yet.")
 	}

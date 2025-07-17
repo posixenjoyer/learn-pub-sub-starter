@@ -57,6 +57,7 @@ func SubscribeJSON[T any](
 					return
 				}
 
+				fmt.Printf("RAW JSON: %s\n", msg.Body)
 				err := json.Unmarshal(msg.Body, rawMsg)
 				if err != nil {
 					statusCh <- fmt.Sprintf(
@@ -92,6 +93,7 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	var publishing amqp.Publishing
 	publishing.ContentType = "application/json"
 	publishing.Body = valJSON
+	fmt.Printf("RAW JSON: %v\n", string(valJSON))
 	err = ch.PublishWithContext(ctx, exchange, key, false, false, publishing)
 	if err != nil {
 		fmt.Printf("Error publishing: %v\n", err)

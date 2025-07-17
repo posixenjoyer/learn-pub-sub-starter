@@ -1,8 +1,8 @@
 package routing
 
 const (
-	ArmyMovesPrefix = "army_moves"
-
+	ArmyMovesPrefix       = "army_moves"
+	ArmyMovesWC           = ArmyMovesPrefix + ".*"
 	WarRecognitionsPrefix = "war"
 
 	PauseKey   = "pause"
