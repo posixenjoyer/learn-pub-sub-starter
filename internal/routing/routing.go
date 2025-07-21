@@ -2,11 +2,12 @@ package routing
 
 const (
 	ArmyMovesPrefix       = "army_moves"
-	ArmyMovesWC           = ArmyMovesPrefix + ".*"
+	WC                    = ".*"
+	ArmyMovesWC           = ArmyMovesPrefix + WC
 	WarRecognitionsPrefix = "war"
-
-	PauseKey   = "pause"
-	GameLogKey = "game_logs.*"
+	WarWC                 = WarRecognitionsPrefix + WC
+	PauseKey              = "pause"
+	GameLogKey            = "game_logs.*"
 
 	GameLogSlug = "game_logs"
 )

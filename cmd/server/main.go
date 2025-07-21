@@ -40,6 +40,18 @@ func processCommand(ch *amqp.Channel, cmdType commandType) {
 	}
 }
 
+func handleLogs() func(routing.GameLog) pubsub.AckType {
+	return func(gameLog routing.GameLog) pubsub.AckType {
+		defer fmt.Print("> ")
+		err := gamelogic.WriteLog(gameLog)
+		if err != nil {
+			fmt.Println("Error: ", err)
+			return pubsub.NackRequeue
+		}
+		return pubsub.Ack
+	}
+}
+
 func main() {
 	fmt.Println("Starting Peril server...")
 	connect := "amqp://guest:guest@localhost:5672/"
@@ -68,12 +80,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	_, _, err = pubsub.DeclareBind(
+	err = pubsub.SubscribeGob(
 		amqpConnection,
 		routing.ExchangePerilTopic,
 		routing.GameLogSlug,
 		routing.GameLogKey,
-		pubsub.Durable)
+		pubsub.Durable,
+		handleLogs())
+
+	if err != nil {
+		fmt.Println("Error with Gob Subscribe: ", err)
+	}
 
 	for {
 		gamelogic.PrintServerHelp()

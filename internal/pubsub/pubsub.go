@@ -1,7 +1,9 @@
 package pubsub
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"encoding/json"
 	_ "errors"
 	"fmt"
@@ -31,6 +33,72 @@ func chanCloseError(err error) string {
 	return errMsg
 }
 
+func SubscribeGob[T any](
+	con *amqp.Connection,
+	exchange, queueName, key string,
+	qType QueueType,
+	handler func(T) AckType) error {
+
+	fmt.Println("Quename = ", queueName)
+	aChan, _, err := DeclareBind(con, exchange, queueName, key, qType)
+	if err != nil {
+		return err
+	}
+
+	dMsgs, err := aChan.Consume(queueName, "", false, false, false, false, nil)
+
+	if err != nil {
+		return err
+	}
+
+	statusCh := make(chan string)
+	closeCh := make(chan *amqp.Error)
+	aChan.NotifyClose(closeCh)
+
+	go func() {
+		for {
+			defer close(statusCh)
+			select {
+			case msg, ok := <-dMsgs:
+				if !ok {
+					statusCh <- consumerStopped
+					return
+				}
+
+				gobBuf := bytes.NewBuffer(msg.Body)
+				dec := gob.NewDecoder(gobBuf)
+				var gobData T
+				err = dec.Decode(&gobData)
+				if err != nil {
+					statusCh <- fmt.Sprintf(
+						"Error Gob Decode: (%s)",
+						err)
+					return
+				}
+
+				ackRes := handler(gobData)
+
+				switch ackRes {
+				case Ack:
+					msg.Ack(false)
+				case NackDiscard:
+					msg.Nack(false, false)
+				case NackRequeue:
+					msg.Nack(false, true)
+				}
+			case err := <-closeCh:
+				if err != nil {
+					statusCh <- chanCloseError(err)
+				} else {
+					statusCh <- gracefulChClose
+				}
+				return
+			}
+		}
+	}()
+
+	return nil
+}
 func SubscribeJSON[T any](
 	con *amqp.Connection,
 	exchange, queueName, key string,
@@ -93,6 +161,27 @@ func SubscribeJSON[T any](
 			}
 		}
 	}()
+
+	return nil
+}
+
+func PublishGob[T any](ch *amqp.Channel, exchange, key string, val T) error {
+	var gobBuf bytes.Buffer
+	gobEnc := gob.NewEncoder(&gobBuf)
+	err := gobEnc.Encode(val)
+	if err != nil {
+		fmt.Printf("error: val (%v) couldn't be encoded as gob, err: %v\n", val, err)
+		return err
+	}
+	ctx := context.Background()
+	var publishing amqp.Publishing
+	publishing.ContentType = "application/gob"
+	publishing.Body = gobBuf.Bytes()
+	err = ch.PublishWithContext(ctx, exchange, key, false, false, publishing)
+	if err != nil {
+		fmt.Printf("Error publishing: %v\n", err)
+		return err
+	}
 
 	return nil
 }
