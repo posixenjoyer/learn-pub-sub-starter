@@ -8,12 +8,36 @@ import (
 	"github.com/posixenjoyer/learn-pub-sub-starter/internal/pubsub"
 	"github.com/posixenjoyer/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"strconv"
+	"time"
 )
 
 func processSpawn(ch *amqp.Channel, argv []string, state gamelogic.GameState) error {
 	err := state.CommandSpawn(argv)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func processSpam(ch *amqp.Channel, argv []string, state gamelogic.GameState) error {
+	fmt.Printf("argv[1]: %v\n", argv[1])
+	n, err := strconv.Atoi(argv[1])
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < n; i++ {
+		msg := gamelogic.GetMaliciousLog()
+		gameLog := routing.GameLog{
+			CurrentTime: time.Now(),
+			Message:     msg,
+			Username:    state.Player.Username,
+		}
+		err = pubsub.PublishGob(ch, routing.ExchangePerilTopic, routing.GameLogSlug+"."+state.Player.Username, gameLog)
+		if err != nil {
+			fmt.Println("Publish error: ", err)
+		}
 	}
 	return nil
 }
@@ -54,7 +78,7 @@ func processCmd(ch *amqp.Channel, args []string, state *gamelogic.GameState) err
 	case "status":
 		err = getStatus(args)
 	case "spam":
-		fmt.Println("Spamming is not allowed yet.")
+		err = processSpam(ch, args, *state)
 	}
 
 	return err

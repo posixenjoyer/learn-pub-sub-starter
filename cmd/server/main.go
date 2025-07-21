@@ -42,6 +42,7 @@ func processCommand(ch *amqp.Channel, cmdType commandType) {
 
 func handleLogs() func(routing.GameLog) pubsub.AckType {
 	return func(gameLog routing.GameLog) pubsub.AckType {
+		fmt.Println("Handle Logs!!")
 		defer fmt.Print("> ")
 		err := gamelogic.WriteLog(gameLog)
 		if err != nil {

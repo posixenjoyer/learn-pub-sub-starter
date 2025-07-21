@@ -45,6 +45,11 @@ func SubscribeGob[T any](
 		return err
 	}
 
+	err = aChan.Qos(10, 0, false)
+	if err != nil {
+		return err
+	}
+
 	dMsgs, err := aChan.Consume(queueName, "", false, false, false, false, nil)
 
 	if err != nil {
@@ -61,22 +66,50 @@ func SubscribeGob[T any](
 			select {
 			case msg, ok := <-dMsgs:
 				if !ok {
+					fmt.Println("DEBUG: Channel closed")
 					statusCh <- consumerStopped
 					return
 				}
+				fmt.Printf("DEBUG: Received message! Body length: %d\n", len(msg.Body))
 
 				gobBuf := bytes.NewBuffer(msg.Body)
 				dec := gob.NewDecoder(gobBuf)
 				var gobData T
+				fmt.Println("DEBUG: About to decode Gob...")
 				err = dec.Decode(&gobData)
 				if err != nil {
-					statusCh <- fmt.Sprintf(
-						"Error Gob Decode: (%s)",
-						err)
-					return
+					fmt.Printf("DEBUG: Gob decode FAILED: %v\n", err)
+					statusCh <- fmt.Sprintf("Error Gob Decode: (%s)", err)
+					msg.Nack(false, false)
+					continue
 				}
+				fmt.Println("DEBUG: Gob decode SUCCESS!")
 
+				fmt.Println("DEBUG: About to call handler...")
 				ackRes := handler(gobData)
+				fmt.Println("DEBUG: Handler finished, result:", ackRes)
+				/*
+					case msg, ok := <-dMsgs:
+						if !ok {
+							statusCh <- consumerStopped
+							return
+						}
+						fmt.Printf("Received message! Body length: %d\n", len(msg.Body)) // Debug
+
+						gobBuf := bytes.NewBuffer(msg.Body)
+						dec := gob.NewDecoder(gobBuf)
+						var gobData T
+						err = dec.Decode(&gobData)
+						if err != nil {
+							statusCh <- fmt.Sprintf(
+								"Error Gob Decode: (%s)",
+								err)
+							return
+						}
+						fmt.Println("Successfully Decoded Message!")
+
+						ackRes := handler(gobData)
+				*/
 
 				switch ackRes {
 				case Ack:
@@ -111,6 +144,11 @@ func SubscribeJSON[T any](
 		return err
 	}
 
+	err = aChan.Qos(10, 0, true)
+	if err != nil {
+		fmt.Println("Qos Error: ", err)
+		return err
+	}
 	dMsgs, err := aChan.Consume(queueName, "", false, false, false, false, nil)
 
 	if err != nil {
